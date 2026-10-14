@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>淡水健身房人數</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f5f2;--card:#fff;--ink:#1d1d1b;--muted:#6b6a66;--line:#e4e2dc;
+    --accent:#0f766e;--h0:#e6f4f1;--h4:#0f766e;
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --bg:#141414;--card:#1e1e1d;--ink:#ecebe7;--muted:#9b9a95;--line:#2f2f2d;
+    --accent:#5eead4;--h0:#1c2b29;--h4:#5eead4;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 -apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+  main{max-width:960px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .label{color:var(--muted);font-size:13px}
+  .big{font-size:36px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+  .big small{font-size:15px;color:var(--muted);font-weight:400}
+  h2{font-size:16px;margin:0 0 12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  button.day{border:1px solid var(--line);background:transparent;color:var(--ink);
+    border-radius:999px;padding:4px 12px;cursor:pointer;font:inherit;font-size:13px}
+  button.day.on{background:var(--accent);border-color:var(--accent);color:var(--card)}
+  ol.best{margin:0;padding-left:20px}
+  ol.best li{margin:4px 0;font-variant-numeric:tabular-nums}
+  .heat{overflow-x:auto}
+  table{border-collapse:separate;border-spacing:2px;font-size:12px;width:100%;min-width:420px}
+  th{color:var(--muted);font-weight:500;padding:2px 4px;text-align:center}
+  td{text-align:center;border-radius:4px;padding:3px 0;font-variant-numeric:tabular-nums;min-width:40px}
+  td.t{color:var(--muted);text-align:right;padding-right:6px;background:none}
+  td.na{color:var(--line)}
+  .legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:8px}
+  .legend span.sw{width:60px;height:10px;border-radius:3px;background:linear-gradient(90deg,var(--h0),var(--h4))}
+  .chartbox{position:relative;height:260px}
+  .err{color:#b91c1c}
+</style>
+</head>
+<body>
+<main>
+  <h1>淡水運動中心・健身房人數</h1>
+  <p class="sub" id="meta">載入中…</p>
+
+  <div class="grid">
+    <div class="card"><div class="label">最新一筆 · 健身房</div>
+      <div class="big" id="nowGym">–</div><div class="label" id="nowTime"></div></div>
+    <div class="card"><div class="label">最新一筆 · 游泳池</div>
+      <div class="big" id="nowPool">–</div></div>
+    <div class="card"><div class="label">累積樣本</div>
+      <div class="big" id="count">–</div><div class="label" id="span"></div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h2>哪個時段最空？</h2>
+    <div class="row" id="days"></div>
+    <ol class="best" id="best"></ol>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h2>每週熱度圖（平均人數）</h2>
+    <div class="heat"><table id="heat"></table></div>
+    <div class="legend">人少<span class="sw"></span>人多 · 空白＝還沒有資料</div>
+  </div>
+
+  <div class="card">
+    <h2>最近 7 天</h2>
+    <div class="chartbox"><canvas id="line"></canvas></div>
+  </div>
+</main>
+
+<script>
+const DAYS = ["週一","週二","週三","週四","週五","週六","週日"];
+const SLOTS = []; for (let h = 6; h < 22; h++) { SLOTS.push(`${String(h).padStart(2,"0")}:00`, `${String(h).padStart(2,"0")}:30`); }
+
+function parseCSV(t){
+  const [head, ...lines] = t.trim().split(/\r?\n/);
+  const keys = head.split(",");
+  return lines.filter(Boolean).map(l => {
+    const v = l.split(","); const o = {};
+    keys.forEach((k,i) => o[k] = v[i]);
+    const [d, tm] = o.timestamp_tpe.split(" ");
+    const [Y,M,D] = d.split("-").map(Number); const [h,m] = tm.split(":").map(Number);
+    o.date = new Date(Y, M-1, D, h, m);          // 以台北時間的「牆上時間」處理
+    o.dow = (o.date.getDay() + 6) % 7;            // 週一=0
+    o.slot = `${String(h).padStart(2,"0")}:${m < 30 ? "00" : "30"}`;
+    o.gym = o.gym === "" ? null : +o.gym; o.gym_max = +o.gym_max || 150;
+    o.pool = o.pool === "" ? null : +o.pool; o.pool_max = +o.pool_max || 200;
+    return o;
+  }).filter(r => r.gym !== null);
+}
+
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function mix(a, b, t){
+  const p = c => c.match(/\w\w/g).map(x => parseInt(x,16));
+  const A = p(a), B = p(b);
+  return "rgb(" + A.map((v,i) => Math.round(v + (B[i]-v)*t)).join(",") + ")";
+}
+
+function render(rows){
+  const last = rows[rows.length-1];
+  document.getElementById("meta").textContent = `資料每 30 分鐘由 GitHub Actions 自動更新 · 營業時間 06:00–22:00`;
+  document.getElementById("nowGym").innerHTML = `${last.gym}<small> / ${last.gym_max} 人</small>`;
+  document.getElementById("nowPool").innerHTML = last.pool === null ? "–" : `${last.pool}<small> / ${last.pool_max} 人</small>`;
+  document.getElementById("nowTime").textContent = last.timestamp_tpe;
+  document.getElementById("count").textContent = rows.length;
+  document.getElementById("span").textContent = `${rows[0].timestamp_tpe.slice(0,10)} 起`;
+
+  // 平均值：星期 × 半小時
+  const agg = {};
+  rows.forEach(r => { const k = r.dow + "|" + r.slot; (agg[k] ||= []).push(r.gym); });
+  const avg = k => agg[k] ? agg[k].reduce((a,b)=>a+b,0) / agg[k].length : null;
+  const vals = Object.keys(agg).map(avg);
+  const max = Math.max(1, ...vals);
+
+  // 熱度圖
+  const h0 = cssVar("--h0"), h4 = cssVar("--h4");
+  let html = "<tr><th></th>" + DAYS.map(d => `<th>${d}</th>`).join("") + "</tr>";
+  SLOTS.forEach(s => {
+    html += `<tr><td class="t">${s}</td>`;
+    for (let d = 0; d < 7; d++){
+      const k = d + "|" + s, a = avg(k);
+      if (a === null) { html += `<td class="na">·</td>`; continue; }
+      const t = a / max;
+      const fg = t > 0.55 ? cssVar("--card") : cssVar("--ink");
+      html += `<td style="background:${mix(h0,h4,t)};color:${fg}" title="${DAYS[d]} ${s}：平均 ${a.toFixed(1)} 人（${agg[k].length} 筆）">${Math.round(a)}</td>`;
+    }
+    html += "</tr>";
+  });
+  document.getElementById("heat").innerHTML = html;
+
+  // 推薦時段
+  const daysEl = document.getElementById("days");
+  const today = (new Date().getDay() + 6) % 7;
+  function showBest(d){
+    [...daysEl.children].forEach((b,i) => b.classList.toggle("on", i === d));
+    const list = SLOTS.map(s => ({ s, a: avg(d + "|" + s), n: (agg[d + "|" + s] || []).length }))
+                      .filter(x => x.a !== null).sort((x,y) => x.a - y.a).slice(0, 5);
+    document.getElementById("best").innerHTML = list.length
+      ? list.map(x => `<li><b>${x.s}</b>　平均 ${x.a.toFixed(1)} 人<span class="label">（${x.n} 筆）</span></li>`).join("")
+      : `<li class="label">這天還沒有資料，等幾週後就會準了</li>`;
+  }
+  daysEl.innerHTML = DAYS.map(d => `<button class="day">${d}</button>`).join("");
+  [...daysEl.children].forEach((b,i) => b.onclick = () => showBest(i));
+  showBest(today);
+
+  // 最近 7 天折線
+  const since = new Date(last.date.getTime() - 7*864e5);
+  const recent = rows.filter(r => r.date >= since);
+  new Chart(document.getElementById("line"), {
+    type: "line",
+    data: { labels: recent.map(r => r.timestamp_tpe.slice(5)),
+      datasets: [{ label: "健身房", data: recent.map(r => r.gym), borderColor: cssVar("--accent"),
+                   backgroundColor: "transparent", pointRadius: 0, tension: .25, spanGaps: false }] },
+    options: { maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { maxTicksLimit: 7, color: cssVar("--muted") }, grid: { display: false } },
+                y: { beginAtZero: true, ticks: { color: cssVar("--muted") }, grid: { color: cssVar("--line") } } } }
+  });
+}
+
+fetch("data/occupancy.csv?" + Date.now())
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+  .then(t => { const rows = parseCSV(t); if (!rows.length) throw new Error("還沒有資料"); render(rows); })
+  .catch(e => { document.getElementById("meta").innerHTML = `<span class="err">讀不到資料：${e.message}</span>`; });
+</script>
+</body>
+</html>
