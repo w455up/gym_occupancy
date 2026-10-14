@@ -1,7 +1,7 @@
 # 淡水運動中心健身房人數紀錄
 
 每 30 分鐘由 GitHub Actions 抓一次 <https://wstssc.com.tw/> 首頁上的健身房（與游泳池）即時人數，存進 `data/occupancy.csv`，並用 GitHub Pages 顯示熱度圖，方便挑人少的時段去。
-視覺化展示網址：`https://w455up.github.io/gym_occupancy/`
+##### 網址：<https://w455up.github.io/gym_occupancy/>
 
 ## 檔案
 
