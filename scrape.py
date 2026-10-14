@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
@@ -17,20 +18,37 @@ TPE = timezone(timedelta(hours=8))
 FIELDS = ["timestamp_tpe", "gym", "gym_max", "pool", "pool_max"]
 
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+              "image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "identity",
+    "Cache-Control": "no-cache",
+    "Upgrade-Insecure-Requests": "1",
+}
+
+
 def fetch(url: str, retries: int = 3) -> str:
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-        "Accept-Language": "zh-TW,zh;q=0.9",
-    })
+    req = urllib.request.Request(url, headers=HEADERS)
     last = None
     for i in range(retries):
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 return r.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            last = e
+            body = e.read()[:400].decode("utf-8", errors="replace")
+            print(f"[診斷] HTTP {e.code}", file=sys.stderr)
+            for k in ("Server", "CF-RAY", "X-Sucuri-ID", "X-Cache", "Content-Type"):
+                if e.headers.get(k):
+                    print(f"[診斷] {k}: {e.headers.get(k)}", file=sys.stderr)
+            print("[診斷] 回應開頭：" + re.sub(r"\s+", " ", body), file=sys.stderr)
         except Exception as e:  # noqa: BLE001
             last = e
-            time.sleep(5 * (i + 1))
+            print(f"[診斷] {type(e).__name__}: {e}", file=sys.stderr)
+        time.sleep(5 * (i + 1))
     raise RuntimeError(f"無法取得 {url}: {last}")
 
 
