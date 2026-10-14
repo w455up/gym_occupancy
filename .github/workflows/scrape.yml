@@ -17,7 +17,7 @@ jobs:
   scrape:
     # 預設用 GitHub 的機器；若官網擋 GitHub，到 Settings → Secrets and variables →
     # Actions → Variables 新增 RUNNER = self-hosted，就會改用你自己電腦上的 runner
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
