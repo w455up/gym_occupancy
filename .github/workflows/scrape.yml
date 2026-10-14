@@ -15,11 +15,14 @@ concurrency:
 
 jobs:
   scrape:
-    runs-on: ubuntu-latest
+    # 預設用 GitHub 的機器；若官網擋 GitHub，到 Settings → Secrets and variables →
+    # Actions → Variables 新增 RUNNER = self-hosted，就會改用你自己電腦上的 runner
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.12"
 
@@ -27,16 +30,4 @@ jobs:
         run: python scrape.py
 
       - name: 提交資料
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/occupancy.csv
-          if git diff --cached --quiet; then
-            echo "沒有新資料"
-            exit 0
-          fi
-          git commit -m "data: $(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M')"
-          for i in 1 2 3; do
-            git pull --rebase && git push && break
-            sleep 5
-          done
+        run: python commit.py
